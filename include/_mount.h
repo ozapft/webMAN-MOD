@@ -228,8 +228,15 @@ static bool game_mount(char *buffer, char *templn, char *param, char *tempstr, b
 		enum icon_type default_icon = iPS3;
 
 #ifdef COPY_PS3
-		char target[STD_PATH_LEN], *pos; *target = NULL;
-		if(islike(param, "/copy.ps3")) {plen = COPY_CMD; pos = strstr(param, "&to="); if(pos) {strcpy(target, pos + 4); *pos = NULL;}}
+		char target[STD_PATH_LEN]; *target = '\0';
+		if(islike(param, "/copy.ps3"))
+		{
+			char *pos = strchr(param, '|'); plen = 1;
+			if(!pos) {pos = strstr(param, "&to="); plen = 4;}
+			if( pos) {strcpy(target, pos + plen); *pos = '\0';}
+			plen = COPY_CMD;
+		}
+
 		bool is_copy = ((plen == COPY_CMD) && (copy_in_progress == false));
 		char *wildcard = NULL;
 
@@ -1244,7 +1251,6 @@ static bool mount_ps_disc_image(char *_path, char *cobra_iso_list[], u8 iso_part
 	}
 	else if(_path[flen] == '.')
 	{
-		const char *cue_ext[4] = {".cue", ".ccd", ".CUE", ".CCD"};
 		change_ext(_path, 4, cue_ext);
 		if(not_exists(_path)) strcpy(_path, cobra_iso_list[0]);
 	}

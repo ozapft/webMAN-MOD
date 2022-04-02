@@ -1,5 +1,6 @@
 #define FTP_OK_150			"150 OK\r\n"						// File status okay; about to open data connection.
 #define FTP_OK_200			"200 OK\r\n"						// The requested action has been successfully completed.
+#define FTP_OK_202			"202 OK\r\n"						// Command not implemented, superfluous at this site.
 #define FTP_OK_TYPE_200		"200 TYPE OK\r\n"					// The requested action has been successfully completed.
 #define FTP_OK_221			"221 BYE\r\n"						// Service closing control connection.
 #define FTP_OK_226			"226 OK\r\n"						// Closing data connection. Requested file action successful (for example, file transfer or file abort).
@@ -47,6 +48,8 @@ static u8 parsePath(char *absPath_s, const char *path, const char *cwd, bool sca
 	else
 	{
 		u16 len = sprintf(absPath_s, "%s", cwd);
+
+		if(absPath_s[len - 1] != '/') strcat(absPath_s + len, "/");
 
 		strcat(absPath_s + len, path);
 	}
@@ -214,6 +217,7 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 
 	while(connactive && working && ftp_session)
 	{
+		memset(buffer, 0, FTP_RECV_SIZE);
 		rlen = (int)recv(conn_s_ftp, buffer, FTP_RECV_SIZE, 0);
 		if(rlen > 0)
 		{
@@ -254,11 +258,11 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 
 							if(sysmem)
 							{
-#ifdef COPY_PS3
+							#ifdef COPY_PS3
 								if(!copy_in_progress) {ftp_state = 1; strcpy(current_file, filename);}
-#endif
+							#endif
 								char *buffer2 = (char*)sysmem;
-#ifdef USE_NTFS
+							#ifdef USE_NTFS
 								if(is_ntfs_path(filename))
 								{
 									fd = ps3ntfs_open(ntfs_path(filename), O_RDONLY, 0);
@@ -290,7 +294,7 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 									}
 								}
 								else
-#endif
+							#endif
 								if(cellFsOpen(filename, CELL_FS_O_RDONLY, &fd, NULL, 0) == CELL_FS_SUCCEEDED)
 								{
 									u64 read_e, pos;
@@ -523,12 +527,12 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 					if(split)
 					{
 						absPath(filename, param, cwd);
-#ifdef USE_NTFS
+						#ifdef USE_NTFS
 						if(is_ntfs_path(filename))
 						{
 							if(ps3ntfs_unlink(ntfs_path(filename)) >= 0) is_ntfs = true;
 						}
-#endif
+						#endif
 						if(is_ntfs || cellFsUnlink(filename) == CELL_FS_SUCCEEDED)
 						{
 							ssend(conn_s_ftp, FTP_OK_250); // Requested file action okay, completed.
@@ -861,8 +865,9 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 							}
 							else
 							{
-								free_size(d_path, param);
-								sprintf(buffer, "226 [%s] [%s %s]\r\n", d_path, param, cpursx);
+								char *size = cpursx + 0x20;
+								free_size(d_path, size);
+								sprintf(buffer, "226 [%s] [%s %s]\r\n", d_path, size, cpursx);
 								ssend(conn_s_ftp, buffer);
 							}
 						}
@@ -1247,7 +1252,7 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 #endif //#ifndef LITE_EDITION
 						else
 						{
-							ssend(conn_s_ftp, FTP_ERROR_500);
+							ssend(conn_s_ftp, FTP_ERROR_500); // Syntax error, command unrecognized and the requested	action did not take place.
 						}
 					}
 					else
@@ -1275,6 +1280,10 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 										" MLST type*;size*;modify*;UNIX.mode*;UNIX.uid*;UNIX.gid*;\r\n"
 										"211 End\r\n");
 				}
+				else if(strcasestr("AUTH|ADAT|CCC|CLNT|CONF|ENC|EPRT|EPSV|LANG|LPRT|LPSV|MIC|OPTS|HELP|PBSZ|PROT|SMNT|STOU|XRCP|XSEN|XSEM|XRSQ|ACCT|ALLO|MODE|REIN|STAT|STRU", cmd))
+				{
+					ssend(conn_s_ftp, FTP_OK_202);	// OK, not implemented, superfluous at this site.
+				}
 				else
 				/*if(  _IS(cmd, "AUTH") || _IS(cmd, "ADAT")
 					|| _IS(cmd, "CCC")  || _IS(cmd, "CLNT")
@@ -1282,7 +1291,7 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 					|| _IS(cmd, "EPRT") || _IS(cmd, "EPSV")
 					|| _IS(cmd, "LANG") || _IS(cmd, "LPRT")
 					|| _IS(cmd, "LPSV") || _IS(cmd, "MIC" )
-					|| _IS(cmd, "OPTS")
+					|| _IS(cmd, "OPTS") || _IS(cmd, "HELP")
 					|| _IS(cmd, "PBSZ") || _IS(cmd, "PROT")
 					|| _IS(cmd, "SMNT") || _IS(cmd, "STOU")
 					|| _IS(cmd, "XRCP") || _IS(cmd, "XSEN")
@@ -1316,7 +1325,7 @@ static void handleclient_ftp(u64 conn_s_ftp_p)
 				else
 				if(_IS(cmd, "PASS"))
 				{
-					if((webman_config->ftp_password[0] == NULL) || IS(webman_config->ftp_password, param))
+					if((webman_config->ftp_password[0] == '\0') || IS(webman_config->ftp_password, param))
 					{
 						ssend(conn_s_ftp, FTP_OK_230);		// User logged in, proceed. Logged out if appropriate.
 						loggedin = 1;

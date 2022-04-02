@@ -134,7 +134,7 @@ static size_t get_name(char *name, const char *filename, u8 cache)
 	//   returns file name with WMTMP path                      (cache == 1 -> remove path first)
 
 	int flen, pos = 0;
-	if(cache) {pos = strlen(filename); while(pos > 0 && filename[pos - 1] != '/') pos--;}
+	if(cache) {pos = strlen(filename); while((pos > 0) && filename[pos - 1] != '/') pos--;}
 	if(cache == NO_PATH) cache = 0;
 
 	if(cache == WM_COVERS)
@@ -172,8 +172,8 @@ static size_t get_name(char *name, const char *filename, u8 cache)
 	if(is_BIN_ENC(name)) {flen -= 8; name[flen] = '\0';}
 
 	if((flen > 2) && name[flen - 2] == '.' ) {flen -= 2; name[flen] = '\0';} // remove file extension (split iso)
-	if((flen > 4) && name[flen - 4] == '.' ) {flen -= 4; name[flen] = '\0';} // remove file extension
 	if((flen > 3) && name[flen - 3] == '.' ) {flen -= 3; name[flen] = '\0';} // remove file extension for roms (.gb .gg .vb)
+	if((flen > 4) && name[flen - 4] == '.' ) {flen -= 4; name[flen] = '\0';} // remove file extension
 	else if(strstr(filename + pos, ".ntfs["))
 	{
 		while(name[flen] != '.') flen--; name[flen] = '\0';
@@ -486,7 +486,7 @@ static void get_default_icon_for_iso(char *icon, const char *param, char *file, 
 			sprintf(remote_file, "%s/%s/PS3_GAME/ICON0.PNG", param, file);
 			flen = get_name(icon, file, GET_WMTMP); sprintf(icon + flen, ".png");
 
-			copy_net_file(icon, remote_file, ns, COPY_WHOLE_FILE);
+			copy_net_file(icon, remote_file, ns);
 			if(file_exists(icon)) return;
 		}
 		else
@@ -504,7 +504,7 @@ static void get_default_icon_for_iso(char *icon, const char *param, char *file, 
 				strcpy(remote_file + tlen, ext[e]);
 
 				//Copy remote icon locally
-				copy_net_file(icon, remote_file, ns, COPY_WHOLE_FILE);
+				copy_net_file(icon, remote_file, ns);
 				if(file_exists(icon)) return;
 			}
 		}
@@ -609,7 +609,7 @@ static int get_title_and_id_from_sfo(char *param_sfo, char *title_id, const char
 	char *title = param_sfo;
 
 	// get title_id & title from PARAM.SFO
-	if(is_sfo(mem))
+	if(sfo_size && is_sfo(mem))
 	{
 		if((IS_HDD0 && islike(param_sfo + 9, "/game/")) || islike(param_sfo + 11, "/GAMEI/") || strstr(param_sfo, "_00-")) use_filename = false;
 
