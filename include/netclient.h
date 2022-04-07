@@ -186,18 +186,18 @@ static int remote_stat(int s, const char *path, int *is_directory, s64 *file_siz
 	return CELL_OK;
 }
 
-static int remote_file_exists(int ns, const char *remote_file)
+static bool remote_file_exists(int ns, const char *remote_file)
 {
 	s64 size = 0; int abort_connection = 0;
 	int is_directory = 0; u64 mtime, ctime, atime;
 
 	if(remote_stat(ns, remote_file, &is_directory, &size, &mtime, &ctime, &atime, &abort_connection) == FAILED)
-		return FAILED;
+		return false;
 
 	if(is_directory || (size > 0))
-		return CELL_OK;
+		return true;
 
-	return FAILED;
+	return false;
 }
 
 #ifdef USE_INTERNAL_NET_PLUGIN
@@ -793,6 +793,8 @@ static int copy_net_file(const char *local_file, const char *remote_file, int ns
 		if(strchr("\"<|>:*?", remote_file[c])) return FAILED;
 	}
 
+	if(remote_file_exists(ns, remote_file) == false) return FAILED;
+
 	// copy remote file
 	int ret = FAILED;
 	int abort_connection = 0;
@@ -808,6 +810,8 @@ static int copy_net_file(const char *local_file, const char *remote_file, int ns
 		if(sys_memory_allocate(chunk_size, SYS_MEMORY_PAGE_SIZE_64K, &sysmem) == CELL_OK)
 		{
 			char *chunk = (char*)sysmem; int fdw;
+
+			show_progress(remote_file, OV_COPY);
 
 			if(cellFsOpen(local_file, CELL_FS_O_CREAT | CELL_FS_O_TRUNC | CELL_FS_O_WRONLY, &fdw, NULL, 0) == CELL_FS_SUCCEEDED)
 			{

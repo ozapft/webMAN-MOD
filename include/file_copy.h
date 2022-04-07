@@ -89,7 +89,7 @@ int64_t file_copy(const char *file1, char *file2)
 		if(islike(file1, "/net"))
 		{
 			int ns = connect_to_remote_server((file1[4] & 0x0F));
-			copy_net_file(file2, (char*)file1 + 5, ns);
+			copy_net_file(file2, file1 + 5, ns);
 			if(ns >= 0) sclose(&ns);
 
 			if(file_exists(file2)) return 0;
@@ -101,6 +101,8 @@ int64_t file_copy(const char *file1, char *file2)
 
 	char *file1_666 = NULL;
 	bool check_666 = false;
+
+	show_progress(file1, OV_COPY);
 
 #ifdef UNLOCK_SAVEDATA
 	if(webman_config->unlock_savedata && (buf.st_size < _4KB_))
@@ -305,6 +307,7 @@ static void force_copy(const char *file1, char *file2)
 	dont_copy_same_size = false; // force copy file with the same size than existing file
 	file_copy(file1, file2);
 	dont_copy_same_size = true;  // restore default mode (assume file is already copied if existing file has same size)
+	disable_progress();
 }
 
 #ifdef COPY_PS3

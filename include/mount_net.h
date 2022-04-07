@@ -17,10 +17,10 @@ if(netid >= '0' && netid <= '4')
 	int ns = connect_to_remote_server(netid);
 	if(ns >= 0)
 	{
-		bool notfound = (remote_file_exists(ns, netpath) == FAILED);
+		bool found = remote_file_exists(ns, netpath);
 		sclose(&ns);
 
-		if(notfound)
+		if(!found)
 		{
 			ret = false;
 			goto exit_mount;
@@ -29,18 +29,15 @@ if(netid >= '0' && netid <= '4')
 
 	size_t len = sprintf(netiso_args.path, "%s", netpath);
 
-	bool is_iso = false;
 	char *ext = strrchr(netpath, '.');
+	bool is_iso = (strcasestr(ISO_EXTENSIONS, ext) != NULL);
 
 	// allow mount any file type on ROMS
-	if(islike(netpath, "/ROMS/")) is_iso = false; else
+	if(islike(netpath, "/ROMS/")) ; else
 
 	// check mount ISOs
 	if(ext)
 	{
-		if(strlen(ext) == 4 || islike(ext, ".0"))
-			is_iso = (strcasestr(ISO_EXTENSIONS, ext) != NULL);
-
 		if(!is_iso) ext = NULL;
 	}
 
@@ -63,11 +60,11 @@ if(netid >= '0' && netid <= '4')
 
 	mount_unk = netiso_args.emu_mode = EMU_BD;
 
-	if(islike(netpath, "/PS3ISO") && is_iso) mount_unk = netiso_args.emu_mode = EMU_PS3; else
-	if(islike(netpath, "/BDISO" ) && is_iso) mount_unk = netiso_args.emu_mode = EMU_BD;  else
-	if(islike(netpath, "/DVDISO") && is_iso) mount_unk = netiso_args.emu_mode = EMU_DVD; else
-	if(islike(netpath, "/PS2ISO") && is_iso) goto copy_ps2iso_to_hdd0;                   else
-	if(islike(netpath, "/PSPISO") && is_iso)
+	if(strstr(netpath, "/PS3ISO") && is_iso) mount_unk = netiso_args.emu_mode = EMU_PS3; else
+	if(strstr(netpath, "/BDISO" ) && is_iso) mount_unk = netiso_args.emu_mode = EMU_BD;  else
+	if(strstr(netpath, "/DVDISO") && is_iso) mount_unk = netiso_args.emu_mode = EMU_DVD; else
+	if(strstr(netpath, "/PS2ISO") && is_iso) goto copy_ps2iso_to_hdd0;                   else
+	if(strstr(netpath, "/PSPISO") && is_iso)
 	{
 		sprintf(netiso_args.path, "/***DVD***%s", "/PSPISO");
 	}
@@ -82,20 +79,16 @@ if(netid >= '0' && netid <= '4')
 			// load cuesheet
 			cellFsUnlink(TEMP_NET_PSXCUE);
 			{
-				u8 e = 3;
-				for(; e > 0; e--)
-				{
-					if(is_ext(netpath, cue_ext[e]))
+				// change .cue / .ccd extension to .bin / .iso
+				if(is_ext(netpath, ".cue") || is_ext(netpath, ".ccd"))
+					for(u8 e = 0; e < 10; e++)
 					{
-						for(u8 i = 0; i < 10; i++)
-						{
-							strcpy(netpath + len - 4, iso_ext[i]);
-							if(remote_file_exists(ns, netpath) == CELL_OK) break;
-						}
-						break;
+						strcpy(netpath + len - 4, iso_ext[e]);
+						if(remote_file_exists(ns, netpath)) break;
 					}
-				}
-				for(; e < 4; e++)
+
+				// copy .cue / .ccd to local TEMP_NET_PSXCUE
+				for(u8 e = 0; e < 4; e++)
 				{
 					strcpy(netiso_args.path + len - 4, cue_ext[e]);
 					if(copy_net_file(TEMP_NET_PSXCUE, netiso_args.path, ns) == CELL_OK) break;
@@ -141,7 +134,7 @@ if(netid >= '0' && netid <= '4')
 		if(!is_iso) sprintf(netiso_args.path, "/***PS3***%s", netpath);
 		set_bdvd_as_app_home(); // mount (NET) PS3ISO in /app_home
 	}
-	else if(islike(netpath, "/ROMS/") && !is_iso)
+	else if(islike(netpath, "/ROMS/"))
 	{
 		//netiso_args.emu_mode = EMU_BD;
 		mount_unk = EMU_ROMS;

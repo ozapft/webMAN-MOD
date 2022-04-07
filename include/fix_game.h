@@ -5,7 +5,7 @@
 static bool fix_in_progress = false;
 static bool fix_aborted = false;
 
-#ifdef COPY_PS3
+#if defined(COPY_PS3) || defined(USE_NTFS) || defined(FIX_GAME)
 static u32 fixed_count = 0;
 #endif
 
@@ -65,6 +65,8 @@ static void fix_game_folder(char *path)
 	if(plevel >= 6) return; // limit recursion up to 6 levels
 
 	int fd;
+
+	show_progress(path, OV_FIX);
 
 	if(working && cellFsOpendir(path, &fd) == CELL_FS_SUCCEEDED)
 	{
@@ -142,6 +144,8 @@ static void fix_iso(char *iso_file, u64 maxbytes, bool patch_update)
 #ifdef COPY_PS3
 	sprintf(current_file, "%s", iso_file);
 #endif
+
+	show_progress(iso_file, OV_FIX);
 
 	cellFsChmod(iso_file, MODE); //fix file read-write permission
 
@@ -374,6 +378,7 @@ static void fix_game(char *game_path, char *title_id, u8 fix_type)
 
 		if(webman_config->fixgame == FIX_GAME_FORCED) {webman_config->fixgame=FIX_GAME_QUICK; save_settings();}
 	}
+	disable_progress();
 }
 
 #endif //#ifdef FIX_GAME

@@ -36,11 +36,12 @@
 
 #ifdef COPY_PS3
 
+#if defined(WM_CUSTOM_COMBO) || defined(WM_REQUEST)
+
 #define line	buffer	/* "line", "path" and "buffer" are synonyms */
 #define path	buffer	/* "line", "path" and "buffer" are synonyms */
-#define IS_WEB_COMMAND(line)	(islike(line, "/mount") || (strstr(line, ".ps3") != NULL) || (strstr(line, "_ps3") != NULL))
+#define IS_WEB_COMMAND(line)	(islike(line, "/mount") || strstr(line, ".ps3") || strstr(line, "_ps3") || strstr(line, ".lv1?") || strstr(line, ".lv2?"))
 
-#if defined(WM_CUSTOM_COMBO) || defined(WM_REQUEST)
 static void handle_file_request(const char *wm_url)
 {
 	if(wm_url || file_exists(WMREQUEST_FILE))
@@ -64,7 +65,10 @@ static void parse_script(const char *script_file)
 		size_t buffer_size = read_file(script_file, buffer, max_size, 0); buffer[buffer_size] = 0;
 		char log_file[STD_PATH_LEN]; strcpy(log_file, SC_LOG_FILE);
 
+		if(*buffer && !strchr(buffer, '\n')) strcat(buffer, "\n");
+
 		script_running = true;
+		Check_Overlay();
 
 		while(*buffer)
 		{
@@ -92,7 +96,7 @@ static void parse_script(const char *script_file)
 				}
 				if(dest)
 				{
-					*dest++ = NULL; if(*dest == ' ') dest++; //split parameters
+					*dest++ = NULL; while(*dest == ' ') dest++; //split parameters
 					char *wildcard = strchr(line, '*');
 	#ifdef COBRA_ONLY
 					if(_islike(line, "map /"))  {line += 4;}
@@ -167,6 +171,7 @@ static void parse_script(const char *script_file)
 		sys_memory_free(sysmem);
 
 		script_running = false;
+		disable_progress();
 	}
 }
 

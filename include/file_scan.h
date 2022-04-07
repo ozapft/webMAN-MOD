@@ -55,7 +55,7 @@ static int scan(const char *path, u8 recursive, const char *wildcard, enum scan_
 
 #ifdef USE_NTFS
 	struct stat bufn;
-	DIR_ITER *pdir;
+	DIR_ITER *pdir = NULL;
 
 	if(is_ntfs_path(path))
 	{
@@ -63,6 +63,10 @@ static int scan(const char *path, u8 recursive, const char *wildcard, enum scan_
 		if(pdir) is_ntfs = true;
 	}
 #endif
+
+	show_progress(path, (fop == SCAN_LIST)   ? OV_SCAN :
+						(fop == SCAN_DELETE) ? OV_DELETE :
+						(fop <= SCAN_COPYBK) ? OV_COPY : OV_CLEAR);
 
 	bool is_root = IS(path, "/");
 
@@ -192,5 +196,6 @@ static int scan(const char *path, u8 recursive, const char *wildcard, enum scan_
 			cellFsRmdir(path);
 	}
 
+	disable_progress();
 	return CELL_FS_SUCCEEDED;
 }

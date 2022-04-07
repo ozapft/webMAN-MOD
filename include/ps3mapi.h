@@ -58,8 +58,9 @@
 #define PS3MAPI_ENABLED								1	// R2+TRIANGLE - CFW syscalls partially disabled - keep syscall 8 (PS3MAPI enabled)
 #define PS3MAPI_DISABLED							4	// R2+TRIANGLE - CFW syscalls fully disabled - remove syscall 8 (PS3MAPI disabled)
 
-#define unload_vsh_plugin(a) ps3mapi_get_vsh_plugin_slot_by_name(a, true)
-#define get_free_slot(a)	 ps3mapi_get_vsh_plugin_slot_by_name(PS3MAPI_FIND_FREE_SLOT, false)
+#define load_vsh_plugin(a)   ps3mapi_get_vsh_plugin_slot_by_name(a, 2)
+#define unload_vsh_plugin(a) ps3mapi_get_vsh_plugin_slot_by_name(a, 1)
+#define get_free_slot(a)	 ps3mapi_get_vsh_plugin_slot_by_name(PS3MAPI_FIND_FREE_SLOT, 0)
 
 ///////////// PS3MAPI END //////////////
 
@@ -87,20 +88,45 @@ static void ps3mapi_get_vsh_plugin_info(unsigned int slot, char *tmp_name, char 
 	system_call_5(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_PS3MAPI, PS3MAPI_OPCODE_GET_VSH_PLUGIN_INFO, (u64)slot, (u64)(u32)tmp_name, (u64)(u32)tmp_filename);
 }
 
-static unsigned int ps3mapi_get_vsh_plugin_slot_by_name(const char *name, bool unload)
+static void ps3mapi_check_unload(unsigned int slot, char *tmp_name, char *tmp_filename)
+{
+	ps3mapi_get_vsh_plugin_info(slot, tmp_name, tmp_filename);
+	if(IS(tmp_name, "WWWD"))
+	{
+		wwwd_stop();
+		sys_ppu_thread_exit(0);
+	}
+	if(strstr(tmp_filename, "/VshFpsCounter")) overlay_enabled = 0;
+}
+
+static unsigned int ps3mapi_get_vsh_plugin_slot_by_name(const char *name, int mode)
 {
 	char tmp_name[30];
 	char tmp_filename[STD_PATH_LEN];
 
 	bool find_free_slot = (!name || (*name == PS3MAPI_FIND_FREE_SLOT));
+	bool load_in_new_slot = (mode == 2) && file_exists(name);
 
 	unsigned int slot;
 	for (slot = 1; slot < 7; slot++)
 	{
 		ps3mapi_get_vsh_plugin_info(slot, tmp_name, tmp_filename);
 
-		if(find_free_slot) {if(*tmp_name) continue; break;} else
-		if(IS(tmp_name, name) || strstr(tmp_filename, name)) {if(unload) cobra_unload_vsh_plugin(slot); break;}
+		if(find_free_slot || load_in_new_slot)
+		{
+			if(*tmp_name) continue;
+			if(load_in_new_slot) cobra_load_vsh_plugin(slot, name, NULL, 0);
+			break;
+		}
+		else if(IS(tmp_name, name) || strstr(tmp_filename, name))
+		{
+			if(mode == 1)
+			{
+				ps3mapi_check_unload(slot, tmp_name, tmp_filename);
+				cobra_unload_vsh_plugin(slot);
+			}
+			break;
+		}
 	}
 	return slot;
 }
@@ -113,11 +139,16 @@ static void unload_vsh_gui(void)
 
 static void start_vsh_gui(bool vsh_menu)
 {
-	unsigned int slot;
-	slot = unload_vsh_plugin(vsh_menu ? "VSH_MENU" : "sLaunch");
-	if(slot < 7) return; unload_vsh_gui();
-	slot = get_free_slot(); char arg[2] = {1, 0};
-	if(slot < 7) cobra_load_vsh_plugin(slot, vsh_menu ? WM_RES_PATH "/wm_vsh_menu.sprx" : WM_RES_PATH "/slaunch.sprx", (u8*)arg, 1);
+	unload_vsh_gui();
+
+	int slot = get_free_slot();
+	if(slot < 7)
+	{
+		char arg[2] = {1, 0};
+		char plugin_path[40];
+		sprintf(plugin_path, "%s/%s.sprx", WM_RES_PATH, vsh_menu ? "wm_vsh_menu" : "slaunch");
+		cobra_load_vsh_plugin(slot, plugin_path, (u8*)arg, 1);
+	}
 }
 #endif
 ///////////////////////////////
@@ -406,7 +437,6 @@ static void ps3mapi_syscall8(char *buffer, char *templn, const char *param)
 	{ system_call_2(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_PS3MAPI, PS3MAPI_OPCODE_PCHECK_SYSCALL8); ret_val = (int)p1;}
 
 	syscalls_removed = (ret_val != 0); peek_lv1 = (syscalls_removed) ? lv1_peek_ps3mapi : lv1_peek_cfw;
-	if(!syscalls_removed) disable_signin_dialog();
 
 	#ifdef REMOVE_SYSCALLS
 	if(!syscalls_removed) disable_signin_dialog();
@@ -555,22 +585,27 @@ static u32 ps3mapi_find_offset(u32 pid, u32 address, u32 stop, u8 step, const ch
 {
 	int retval = NONE;
 	found_offset = fallback;
+	Check_Overlay();
 
-	char mem[0x200]; int m = sizeof(mem) - len; u8 gap = len + 0x10 - (len % 0x10);
+	char mem[0x200], label[20]; int m = sizeof(mem) - len; u8 gap = len + 0x10 - (len % 0x10);
 	for(; address < stop; address += sizeof(mem) - gap)
 	{
 		retval = ps3mapi_get_memory(pid, address, mem, sizeof(mem));
 		if(retval < 0) break;
 
+		sprintf(label, "0x%x", address); show_progress(label, OV_FIND);
+
 		for(int offset = 0; offset < m; offset += step)
 		{
 			if( !bcompare(mem + offset, sfind, len, mask) )
 			{
+				disable_progress();
 				found_offset = (address + offset);
 				return found_offset;
 			}
 		}
 	}
+	disable_progress();
 	return found_offset;
 }
 
@@ -667,6 +702,7 @@ static void ps3mapi_getmem(char *buffer, char *templn, const char *param)
 				not_found = true;
 			else
 				hilite = len;
+
 		}
 
 		if(pid == FLASH)
@@ -1066,17 +1102,22 @@ static void ps3mapi_vshplugin(char *buffer, char *templn, const char *param)
 
 			if(strstr(param, "unload_slot="))
 			{
-				if ( uslot ) {system_call_2(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_UNLOAD_VSH_PLUGIN, (u64)uslot);}
+				ps3mapi_check_unload(uslot, tmp_name, tmp_filename);
+
+				if ( uslot )
+				{
+					system_call_2(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_UNLOAD_VSH_PLUGIN, (u64)uslot);
+				}
 			}
 			else
 			{
 				char prx_path[STD_PATH_LEN];
 				if(get_param("prx=", prx_path, param, STD_PATH_LEN))
 				{
-					if (!uslot ) uslot = get_free_slot(); // find free slot if slot == 0
-
 					check_path_alias(prx_path);
+					if (!uslot ) uslot = get_free_slot(); // find free slot if slot == 0
 					if ( uslot ) {{system_call_5(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_LOAD_VSH_PLUGIN, (u64)uslot, (u64)(u32)prx_path, NULL, 0);}}
+					if(strstr(prx_path, "/VshFpsCounter")) overlay_enabled = 1;
 				}
 			}
 		}
@@ -1210,7 +1251,13 @@ static void ps3mapi_gameplugin(char *buffer, char *templn, const char *param)
 			if(pos)
 			{
 				unsigned int prx_id = get_valuen32(pos, "unload_slot=");
-				if(get_valuen32(param, "sys="))
+				unsigned int sys = get_valuen32(param, "sys=");
+				if(sys >= 2)
+				{
+					wwwd_stop();
+					sys_ppu_thread_exit(0);
+				}
+				else if(sys)
 					stop_unload(prx_id); // <- unload system modules
 				else
 					{system_call_4(SC_COBRA_SYSCALL8, SYSCALL8_OPCODE_PS3MAPI, PS3MAPI_OPCODE_UNLOAD_PROC_MODULE, (u64)pid, (u64)prx_id); }
@@ -1304,7 +1351,7 @@ static void ps3mapi_gameplugin(char *buffer, char *templn, const char *param)
 						  "<input type=\"submit\" value=\" Unload \" title=\"id=%i\">"
 						  "</form>"
 						 "</td>"
-						"</tr>", HTML_FORM_METHOD,  pid, mod_list[slot], islike(tmp_filename, "/dev_flash"), mod_list[slot]);
+						"</tr>", HTML_FORM_METHOD, pid, mod_list[slot], islike(tmp_filename, "/dev_flash") | IS(tmp_name, "WWWD")<<1, mod_list[slot]);
 			}
 			else
 			{
